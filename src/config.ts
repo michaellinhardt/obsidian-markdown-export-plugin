@@ -14,13 +14,11 @@ export const OUTGOING_LINK_REGEXP = /(?<!!)\[\[(.*?)\]\]/g;
 
 export enum OUTPUT_FORMATS {
     MD = "Markdown",
-    HTML = "HTML",
 }
 
 export interface MarkdownExportPluginSettings {
     output: string;
     attachment: string;
-    displayImageAsHtml: boolean;
     GFM: boolean;
     fileNameEncode: boolean;
     removeOutgoingLinkBrackets: boolean;
@@ -35,7 +33,6 @@ export interface MarkdownExportPluginSettings {
 export const DEFAULT_SETTINGS: MarkdownExportPluginSettings = {
     output: "output",
     attachment: "attachment",
-    displayImageAsHtml: false,
     GFM: true,
     fileNameEncode: true,
     removeOutgoingLinkBrackets: false,

@@ -1,8 +1,8 @@
-# Obsidian markdown export
+# Obsidian Markdown Export
 
-This is a markdown export plugin for Obsidian (https://obsidian.md).
+This is a clean Markdown export plugin for Obsidian (https://obsidian.md).
 
-It allows you to export markdown to a package (including pictures) with one click.
+It allows you to export your notes as clean Markdown files (including attachments) with one click.
 
 --- 
 
@@ -14,7 +14,7 @@ It allows you to export markdown to a package (including pictures) with one clic
 - [x]  Include image attachments
 - [x]  Option for use `GitHub Flavored Markdown Format`
 - [x]  Embed content
-- [x]  support output format: `html`, `md`
+- [x]  Clean Markdown export with proper formatting
 
 > \[!IMPORTANT]
 >

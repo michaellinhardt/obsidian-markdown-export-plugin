@@ -46,39 +46,32 @@ export default class MarkdownExportPlugin extends Plugin {
             })
         );
 
-        for (const outputFormat of [OUTPUT_FORMATS.MD, OUTPUT_FORMATS.HTML]) {
-            this.addCommand({
-                id: "export-to-" + outputFormat,
-                name: `Export to ${outputFormat}`,
-                callback: async () => {
-                    const file = this.app.workspace.getActiveFile();
-                    if (!file) {
-                        new Notice(`No active file`);
-                        return;
-                    }
-                    this.createFolderAndRun(file, outputFormat);
-                },
-            });
-        }
+        this.addCommand({
+            id: "export-to-md",
+            name: `Export to ${OUTPUT_FORMATS.MD}`,
+            callback: async () => {
+                const file = this.app.workspace.getActiveFile();
+                if (!file) {
+                    new Notice(`No active file`);
+                    return;
+                }
+                this.createFolderAndRun(file);
+            },
+        });
     }
 
     registerDirMenu(menu: Menu, file: TAbstractFile) {
-        for (const outputFormat of [OUTPUT_FORMATS.MD, OUTPUT_FORMATS.HTML]) {
-            const addMenuItem = (item: MenuItem) => {
-                item.setTitle(`Export to ${outputFormat}`);
-                item.onClick(async () => {
-                    await this.createFolderAndRun(file, outputFormat);
-                });
-            };
-            menu.addItem(addMenuItem);
-        }
+        const addMenuItem = (item: MenuItem) => {
+            item.setTitle(`Export to ${OUTPUT_FORMATS.MD}`);
+            item.onClick(async () => {
+                await this.createFolderAndRun(file);
+            });
+        };
+        menu.addItem(addMenuItem);
     }
-    private async createFolderAndRun(
-        file: TAbstractFile,
-        outputFormat: string
-    ) {
+    private async createFolderAndRun(file: TAbstractFile) {
         // run
-        await tryRun(this, file, outputFormat);
+        await tryRun(this, file);
 
         if (file instanceof TFolder) {
             new Notice(
@@ -180,20 +173,6 @@ class MarkdownExportSettingTab extends PluginSettingTab {
                     .setValue(this.plugin.settings.GFM)
                     .onChange(async (value: boolean) => {
                         this.plugin.settings.GFM = value;
-                        await this.plugin.saveSettings();
-                    })
-            );
-
-        new Setting(containerEl)
-            .setName("Use Html tag <img /> to display image")
-            .setDesc(
-                "false default, <img /> tag will use the size specified in obsidian."
-            )
-            .addToggle((toggle) =>
-                toggle
-                    .setValue(this.plugin.settings.displayImageAsHtml)
-                    .onChange(async (value: boolean) => {
-                        this.plugin.settings.displayImageAsHtml = value;
                         await this.plugin.saveSettings();
                     })
             );

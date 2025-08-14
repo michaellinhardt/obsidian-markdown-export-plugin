@@ -10,14 +10,11 @@ import {
     EMBED_METADATA_REGEXP,
     GFM_IMAGE_FORMAT,
     OUTGOING_LINK_REGEXP,
-    OUTPUT_FORMATS,
 } from "./config";
 import MarkdownExportPlugin from "./main";
-import markdownToHTML from "./renderer";
 
 type CopyMarkdownOptions = {
     file: TAbstractFile;
-    outputFormat: string;
     outputSubPath: string;
 };
 
@@ -38,7 +35,6 @@ export async function getEmbeds(markdown: string) {
 export function allMarkdownParams(
     file: TAbstractFile,
     out: Array<CopyMarkdownOptions>,
-    outputFormat: string = OUTPUT_FORMATS.MD,
     outputSubPath = ".",
     parentPath = ""
 ): Array<CopyMarkdownOptions> {
@@ -54,14 +50,12 @@ export function allMarkdownParams(
                     allMarkdownParams(
                         absFile,
                         out,
-                        outputFormat,
                         outputSubPath,
                         outputSubPath
                     );
                 } else {
                     out.push({
                         file: absFile,
-                        outputFormat,
                         outputSubPath,
                     });
                 }
@@ -69,7 +63,6 @@ export function allMarkdownParams(
         } else {
             out.push({
                 file,
-                outputFormat,
                 outputSubPath,
             });
         }
@@ -81,8 +74,7 @@ export function allMarkdownParams(
 
 export async function tryRun(
     plugin: MarkdownExportPlugin,
-    file: TAbstractFile,
-    outputFormat: string = OUTPUT_FORMATS.MD
+    file: TAbstractFile
 ) {
     // recursive functions are not suitable for this case
     // if ((<TFile>file).extension) {
@@ -96,7 +88,7 @@ export async function tryRun(
     // }
 
     try {
-        const params = allMarkdownParams(file, [], outputFormat);
+        const params = allMarkdownParams(file, []);
         for (const param of params) {
             await tryCopyMarkdownByRead(plugin, param);
         }
@@ -342,7 +334,7 @@ export async function getEmbedMap(
 
 export async function tryCopyMarkdownByRead(
     plugin: MarkdownExportPlugin,
-    { file, outputFormat, outputSubPath = "." }: CopyMarkdownOptions
+    { file, outputSubPath = "." }: CopyMarkdownOptions
 ) {
     try {
         await plugin.app.vault.adapter.read(file.path).then(async (content) => {
@@ -411,23 +403,7 @@ export async function tryCopyMarkdownByRead(
                     continue;
                 }
 
-                if (plugin.settings.displayImageAsHtml) {
-                    const { width = null, height = null } =
-                        imageLinks[index]?.groups || {};
-                    const style =
-                        width && height
-                            ? ` style='width: {${width}}px; height: ${height}px;'`
-                            : width
-                            ? ` style='width: ${width}px;'`
-                            : height
-                            ? ` style='height: ${height}px;'`
-                            : "";
-
-                    content = content.replace(
-                        rawImageLink,
-                        `<img src="${hashLink}"${style} />`
-                    );
-                } else if (plugin.settings.GFM) {
+                if (plugin.settings.GFM) {
                     content = content.replace(
                         rawImageLink,
                         GFM_IMAGE_FORMAT.format(hashLink)
@@ -480,38 +456,15 @@ export async function tryCopyMarkdownByRead(
 
             await tryCreateFolder(plugin, outDir);
 
-            switch (outputFormat) {
-                case OUTPUT_FORMATS.HTML: {
-                    let filename;
-                    if (plugin.settings.customFileName) {
-                        filename = plugin.settings.customFileName + ".md";
-                    } else {
-                        filename = file.name;
-                    }
-                    const targetFile = path.join(
-                        outDir,
-                        filename.replace(".md", ".html")
-                    );
-                    const { html } = await markdownToHTML(
-                        plugin,
-                        file.path,
-                        content
-                    );
-                    await tryCreate(plugin, targetFile, html);
-                    break;
-                }
-                case OUTPUT_FORMATS.MD: {
-                    let filename;
-                    if (plugin.settings.customFileName) {
-                        filename = plugin.settings.customFileName + ".md";
-                    } else {
-                        filename = file.name;
-                    }
-                    const targetFile = path.join(outDir, filename);
-                    await tryCreate(plugin, targetFile, content);
-                    break;
-                }
+            // Export as Markdown only
+            let filename;
+            if (plugin.settings.customFileName) {
+                filename = plugin.settings.customFileName + ".md";
+            } else {
+                filename = file.name;
             }
+            const targetFile = path.join(outDir, filename);
+            await tryCreate(plugin, targetFile, content);
         });
     } catch (error) {
         if (!error.message.contains("file already exists")) {
