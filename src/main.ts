@@ -127,7 +127,7 @@ class MarkdownExportSettingTab extends PluginSettingTab {
 
         containerEl.empty();
 
-        containerEl.createEl("h2", { text: "Markdown Export" });
+        containerEl.createEl("h2", { text: "Markdown Export - Mike" });
 
         new Setting(containerEl)
             .setName("Output Path")
