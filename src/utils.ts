@@ -1,7 +1,7 @@
 import * as path from "path";
 import * as fs from "fs";
 import md5 from "md5";
-import { TAbstractFile, TFile, TFolder, htmlToMarkdown } from "obsidian";
+import { TAbstractFile, TFile, TFolder } from "obsidian";
 
 import {
     ATTACHMENT_URL_REGEXP,
@@ -176,10 +176,17 @@ export async function tryCreate(
     p: string,
     data: string
 ) {
+    const override = plugin.settings.overrideExisting;
     try {
         if (p.startsWith("/") || path.win32.isAbsolute(p)) {
+            if (override && fs.existsSync(p)) {
+                fs.unlinkSync(p);
+            }
             fs.writeFileSync(p, data);
         } else {
+            if (override && (await plugin.app.vault.adapter.exists(p))) {
+                await plugin.app.vault.adapter.remove(p);
+            }
             await plugin.app.vault.create(p, data);
         }
     } catch (error) {
@@ -301,34 +308,29 @@ export async function getEmbedMap(
     content: string,
     path: string
 ) {
-    // key：link url
-    // value： embed content parse from html document
-    const embedMap = new Map();
-    const embedList = Array.from(
-        document.documentElement.getElementsByClassName("internal-embed")
-    );
+    const embedMap = new Map<string, string>();
+    const embeds = Array.from(content.matchAll(EMBED_URL_REGEXP));
 
-    Array.from(embedList).forEach((el) => {
-        // markdown-embed-content markdown-embed-page
-        const embedContentHtml = el.getElementsByClassName(
-            "markdown-embed-content"
-        )[0];
+    for (const embed of embeds) {
+        const embedLink = embed[1]; // This is the link text, e.g., "My Other Note"
+        if (!embedLink) continue;
 
-        if (embedContentHtml) {
-            let embedValue = htmlToMarkdown(embedContentHtml.innerHTML);
+        const sourcePath = path; // The path of the file being exported
+        const embeddedFile = plugin.app.metadataCache.getFirstLinkpathDest(
+            embedLink,
+            sourcePath
+        );
+
+        if (embeddedFile instanceof TFile) {
+            let embedValue = await plugin.app.vault.read(embeddedFile); // Read raw markdown
+
             if (plugin.settings.removeYamlHeader) {
                 embedValue = embedValue.replace(EMBED_METADATA_REGEXP, "");
             }
-            embedValue =
-                "> " +
-                (embedValue as string)
-                    .replaceAll("# \n\n", "# ")
-                    .replaceAll("\n", "\n> ");
-            const embedKey = el.getAttribute("src");
-            embedMap.set(embedKey, embedValue);
-        }
-    });
 
+            embedMap.set(embedLink, embedValue);
+        }
+    }
     return embedMap;
 }
 
@@ -433,10 +435,13 @@ export async function tryCopyMarkdownByRead(
                 const embeds = await getEmbeds(content);
                 for (const index in embeds) {
                     const url = embeds[index][1];
-                    content = content.replace(
-                        embeds[index][0],
-                        embedMap.get(url)
-                    );
+                    const embedContent = embedMap.get(url);
+                    if (embedContent !== undefined) {
+                        content = content.replace(
+                            embeds[index][0],
+                            embedContent
+                        );
+                    }
                 }
             }
 

@@ -271,5 +271,18 @@ class MarkdownExportSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     })
             );
+        new Setting(containerEl)
+            .setName("Override existing files")
+            .setDesc(
+                "If enabled, any existing file with the same name in the destination will be deleted before exporting."
+            )
+            .addToggle((toggle) =>
+                toggle
+                    .setValue(this.plugin.settings.overrideExisting)
+                    .onChange(async (value: boolean) => {
+                        this.plugin.settings.overrideExisting = value;
+                        await this.plugin.saveSettings();
+                    })
+            );
     }
 }
