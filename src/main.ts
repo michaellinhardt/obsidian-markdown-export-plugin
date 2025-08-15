@@ -7,6 +7,7 @@ import {
     PluginSettingTab,
     Setting,
     TAbstractFile,
+    TFile,
     TFolder,
 } from "obsidian";
 import * as path from "path";
@@ -16,7 +17,7 @@ import {
     DEFAULT_SETTINGS,
     OUTPUT_FORMATS,
 } from "./config";
-import { tryRun } from "./utils";
+import { tryRun, generateMarkdownContent } from "./utils";
 
 export default class MarkdownExportPlugin extends Plugin {
     settings: MarkdownExportPluginSettings;
@@ -27,6 +28,7 @@ export default class MarkdownExportPlugin extends Plugin {
         // This adds a settings tab so the user can configure various aspects of the plugin
         this.addSettingTab(new MarkdownExportSettingTab(this.app, this));
 
+        // Existing: Right-click on file explorer
         this.registerEvent(
             this.app.workspace.on("file-menu", (menu, file) => {
                 // dir/file menu
@@ -46,6 +48,35 @@ export default class MarkdownExportPlugin extends Plugin {
             })
         );
 
+        // ++++++++++++++++ START: NEW CODE FOR EDITOR MENU ++++++++++++++++
+        this.registerEvent(
+            this.app.workspace.on("editor-menu", (menu, editor, view) => {
+                const file = view.file;
+                if (!file) {
+                    return;
+                }
+
+                // Add "Export file to markdown" to editor menu
+                menu.addItem((item) => {
+                    item.setTitle("Export file to markdown").onClick(
+                        async () => {
+                            this.createFolderAndRun(file);
+                        }
+                    );
+                });
+
+                // Add "Export file to clipboard" to editor menu
+                menu.addItem((item) => {
+                    item.setTitle("Export file to clipboard").onClick(
+                        async () => {
+                            this.exportToClipboard(file);
+                        }
+                    );
+                });
+            })
+        );
+        // ++++++++++++++++ END: NEW CODE FOR EDITOR MENU ++++++++++++++++
+
         this.addCommand({
             id: "export-to-md",
             name: `Export to ${OUTPUT_FORMATS.MD}`,
@@ -56,6 +87,21 @@ export default class MarkdownExportPlugin extends Plugin {
                     return;
                 }
                 this.createFolderAndRun(file);
+            },
+        });
+
+        this.addCommand({
+            id: 'export-to-clipboard',
+            name: 'Export file to clipboard',
+            callback: async () => {
+                const file = this.app.workspace.getActiveFile();
+                if (!file) {
+                    new Notice(`No active file to export.`);
+                    return;
+                }
+                // Re-use the existing method, which already contains
+                // all the necessary logic and user notifications.
+                this.exportToClipboard(file);
             },
         });
     }
@@ -91,6 +137,30 @@ export default class MarkdownExportPlugin extends Plugin {
             );
         }
     }
+
+    // ++++++++++++++++ START: NEW CLIPBOARD METHOD ++++++++++++++++
+    private async exportToClipboard(file: TAbstractFile) {
+        if (!(file instanceof TFile)) {
+            new Notice("Clipboard export only supports single files.");
+            return;
+        }
+
+        try {
+            const content = await this.app.vault.read(file);
+            const processedContent = await generateMarkdownContent(
+                this,
+                file,
+                content
+            );
+
+            await navigator.clipboard.writeText(processedContent);
+            new Notice(`"${file.basename}" exported to clipboard.`);
+        } catch (err) {
+            console.error("Error exporting to clipboard:", err);
+            new Notice("Failed to export to clipboard. See console for details.");
+        }
+    }
+    // ++++++++++++++++ END: NEW CLIPBOARD METHOD ++++++++++++++++
 
     onunload() {}
 

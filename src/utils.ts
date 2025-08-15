@@ -334,143 +334,163 @@ export async function getEmbedMap(
     return embedMap;
 }
 
+// ++++++++++++++++ START: NEW AND REFACTORED CODE ++++++++++++++++
+
+/**
+ * Generates the final markdown content string by processing images, links, and embeds.
+ * This function does NOT perform any file I/O other than reading embedded files.
+ */
+export async function generateMarkdownContent(
+    plugin: MarkdownExportPlugin,
+    file: TAbstractFile,
+    fileContent: string,
+    outputSubPath = "."
+): Promise<string> {
+    let processedContent = fileContent;
+
+    const imageLinks = await getImageLinks(processedContent);
+    for (const index in imageLinks) {
+        const rawImageLink = imageLinks[index][0];
+
+        const urlEncodedImageLink =
+            imageLinks[index][7 - imageLinks[index].length];
+        
+        // filter markdown link eg: http://xxx.png
+        if (urlEncodedImageLink.startsWith("http")) {
+            continue;
+        }
+
+        // decode and replace the relative path
+        let imageLink = decodeURI(urlEncodedImageLink).replace(
+            /\.\.\//g,
+            ""
+        );
+        // link: https://help.obsidian.md/Linking+notes+and+files/Embedding+files#Embed+an+image+in+a+note
+        // issue: #44 -> figure checkout: ![[name|figure]]
+        if (imageLink.contains("|")) {
+            imageLink = imageLink.split("|")[0];
+        }
+        const fileName = path.parse(path.basename(imageLink)).name;
+        const imageLinkMd5 = plugin.settings.fileNameEncode
+            ? md5(imageLink)
+            : encodeURI(fileName);
+        const imageExt = path.extname(imageLink);
+        // Unify the link separator in obsidian as a forward slash instead of the default back slash in windows, so that the referenced images can be displayed properly
+
+        const clickSubRoute = getClickSubRoute(outputSubPath);
+
+        const hashLink = path
+            .join(
+                clickSubRoute,
+                plugin.settings.relAttachPath
+                    ? plugin.settings.attachment
+                    : path.join(
+                          plugin.settings.customAttachPath
+                              ? plugin.settings.customAttachPath
+                              : plugin.settings.attachment,
+                          plugin.settings.includeFileName
+                              ? file.name.replace(".md", "")
+                              : ""
+                      ),
+                imageLinkMd5.concat(imageExt)
+            )
+            .replace(/\\/g, "/");
+
+        if (plugin.settings.GFM) {
+            processedContent = processedContent.replace(
+                rawImageLink,
+                GFM_IMAGE_FORMAT.format(hashLink)
+            );
+        } else {
+            processedContent = processedContent.replace(urlEncodedImageLink, hashLink);
+        }
+    }
+
+    if (plugin.settings.removeOutgoingLinkBrackets) {
+        processedContent = processedContent.replaceAll(OUTGOING_LINK_REGEXP, "$1");
+    }
+    
+    // This should come after removeOutgoingLinkBrackets to avoid conflicts
+    if (plugin.settings.convertWikiLinksToMarkdown) {
+        processedContent = processedContent.replace(
+            OUTGOING_LINK_REGEXP,
+            (match, linkText) => {
+                const parts = linkText.split("|");
+                const noteName = parts[0];
+                const alias = parts[1] || noteName;
+                const encodedLink = encodeURIComponent(noteName) + ".md";
+                return `[${alias}](${encodedLink})`;
+            }
+        );
+    }
+    
+    const embedMap = await getEmbedMap(plugin, processedContent, file.path);
+    const embeds = await getEmbeds(processedContent);
+    for (const index in embeds) {
+        const url = embeds[index][1];
+        const embedContent = embedMap.get(url);
+        if (embedContent !== undefined) {
+            processedContent = processedContent.replace(
+                embeds[index][0],
+                embedContent
+            );
+        }
+    }
+
+    return processedContent;
+}
+
 export async function tryCopyMarkdownByRead(
     plugin: MarkdownExportPlugin,
     { file, outputSubPath = "." }: CopyMarkdownOptions
 ) {
     try {
-        await plugin.app.vault.adapter.read(file.path).then(async (content) => {
-            const imageLinks = await getImageLinks(content);
-            if (imageLinks.length > 0) {
-                await tryCreateFolder(
-                    plugin,
-                    path.join(
-                        plugin.settings.relAttachPath
-                            ? plugin.settings.output
-                            : plugin.settings.attachment,
-                        plugin.settings.includeFileName
-                            ? file.name.replace(".md", "")
-                            : "",
-                        plugin.settings.relAttachPath
-                            ? plugin.settings.attachment
-                            : ""
-                    )
-                );
-            }
+        const content = await plugin.app.vault.adapter.read(file.path);
+        
+        // 1. Generate the processed markdown content
+        const processedContent = await generateMarkdownContent(plugin, file, content, outputSubPath);
 
-            for (const index in imageLinks) {
-                const rawImageLink = imageLinks[index][0];
-
-                const urlEncodedImageLink =
-                    imageLinks[index][7 - imageLinks[index].length];
-
-                // decode and replace the relative path
-                let imageLink = decodeURI(urlEncodedImageLink).replace(
-                    /\.\.\//g,
-                    ""
-                );
-                // link: https://help.obsidian.md/Linking+notes+and+files/Embedding+files#Embed+an+image+in+a+note
-                // issue: #44 -> figure checkout: ![[name|figure]]
-                if (imageLink.contains("|")) {
-                    imageLink = imageLink.split("|")[0];
-                }
-                const fileName = path.parse(path.basename(imageLink)).name;
-                const imageLinkMd5 = plugin.settings.fileNameEncode
-                    ? md5(imageLink)
-                    : encodeURI(fileName);
-                const imageExt = path.extname(imageLink);
-                // Unify the link separator in obsidian as a forward slash instead of the default back slash in windows, so that the referenced images can be displayed properly
-
-                const clickSubRoute = getClickSubRoute(outputSubPath);
-
-                const hashLink = path
-                    .join(
-                        clickSubRoute,
-                        plugin.settings.relAttachPath
-                            ? plugin.settings.attachment
-                            : path.join(
-                                  plugin.settings.customAttachPath
-                                      ? plugin.settings.customAttachPath
-                                      : plugin.settings.attachment,
-                                  plugin.settings.includeFileName
-                                      ? file.name.replace(".md", "")
-                                      : ""
-                              ),
-                        imageLinkMd5.concat(imageExt)
-                    )
-                    .replace(/\\/g, "/");
-
-                // filter markdown link eg: http://xxx.png
-                if (urlEncodedImageLink.startsWith("http")) {
-                    continue;
-                }
-
-                if (plugin.settings.GFM) {
-                    content = content.replace(
-                        rawImageLink,
-                        GFM_IMAGE_FORMAT.format(hashLink)
-                    );
-                } else {
-                    content = content.replace(urlEncodedImageLink, hashLink);
-                }
-            }
-
-            if (plugin.settings.removeOutgoingLinkBrackets) {
-                content = content.replaceAll(OUTGOING_LINK_REGEXP, "$1");
-            }
-
-            if (plugin.settings.convertWikiLinksToMarkdown) {
-                content = content.replace(
-                    /\[\[(.*?)\]\]/g,
-                    (match, linkText) => {
-                        const encodedLink = encodeURIComponent(linkText);
-                        return `[${linkText}](${encodedLink})`;
-                    }
-                );
-            }
-
-            const cfile = plugin.app.workspace.getActiveFile();
-            if (cfile != undefined) {
-                const embedMap = await getEmbedMap(plugin, content, cfile.path);
-                const embeds = await getEmbeds(content);
-                for (const index in embeds) {
-                    const url = embeds[index][1];
-                    const embedContent = embedMap.get(url);
-                    if (embedContent !== undefined) {
-                        content = content.replace(
-                            embeds[index][0],
-                            embedContent
-                        );
-                    }
-                }
-            }
-
-            await tryCopyImage(plugin, file.name, file.path);
-
-            // If the user has a custom filename set, we enforce subdirectories to
-            // prevent rendered files from overwriting each other
-            const outDir = path.join(
-                plugin.settings.output,
-                plugin.settings.customFileName != "" ||
-                    (plugin.settings.includeFileName &&
-                        plugin.settings.relAttachPath)
-                    ? file.name.replace(".md", "")
-                    : "",
-                outputSubPath
+        // 2. Perform all file I/O side effects
+        const imageLinks = await getImageLinks(content);
+        if (imageLinks.length > 0) {
+            await tryCreateFolder(
+                plugin,
+                path.join(
+                    plugin.settings.relAttachPath
+                        ? plugin.settings.output
+                        : plugin.settings.attachment,
+                    plugin.settings.includeFileName
+                        ? file.name.replace(".md", "")
+                        : "",
+                    plugin.settings.relAttachPath
+                        ? plugin.settings.attachment
+                        : ""
+                )
             );
+        }
 
-            await tryCreateFolder(plugin, outDir);
+        await tryCopyImage(plugin, file.name, file.path);
 
-            // Export as Markdown only
-            let filename;
-            if (plugin.settings.customFileName) {
-                filename = plugin.settings.customFileName + ".md";
-            } else {
-                filename = file.name;
-            }
-            const targetFile = path.join(outDir, filename);
-            await tryCreate(plugin, targetFile, content);
-        });
+        const outDir = path.join(
+            plugin.settings.output,
+            plugin.settings.customFileName != "" ||
+                (plugin.settings.includeFileName &&
+                    plugin.settings.relAttachPath)
+                ? file.name.replace(".md", "")
+                : "",
+            outputSubPath
+        );
+
+        await tryCreateFolder(plugin, outDir);
+
+        let filename;
+        if (plugin.settings.customFileName) {
+            filename = plugin.settings.customFileName + ".md";
+        } else {
+            filename = file.name;
+        }
+        const targetFile = path.join(outDir, filename);
+        await tryCreate(plugin, targetFile, processedContent);
     } catch (error) {
         if (!error.message.contains("file already exists")) {
             throw error;
